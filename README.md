@@ -2,15 +2,17 @@
 
 This project provides tools intended to be used in conjunction with the JCI EasyIO project backup and restore utilities for  EasyIO BMS controller products.
 
-Specifically, the tools facilitate:
+Specifically, the updater tool:
 
-1. Identifying the most recent backup associated with a particular device in the backup and download workflow.
+1. Identifies the most recent backup associated with a particular device in the backup and download workflow.
 
-2. Expanding the compressed .tar archive and updating the keys for MQTT communications.
+2. Expands the compressed .tar archive.
+ 
+3. Updates the TLS keys used for MQTT communications.
 
-3. Updating the MQTT configuration.
+5. Updates the MQTT configuration.
 
-4. Archiving the updated files and organising them for an upload and restore workflow.
+6. Archives the updated files and prepares them for an upload and restore workflow.
 
 ## System requirements
 
