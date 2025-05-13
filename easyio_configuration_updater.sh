@@ -5,6 +5,7 @@
 # Key and config rotator for EasyIO devices
 # This script loops over a directory of backup files and puts modified backup files
 # into an output directory
+# TLS KEYS MUST BE GENERATED BEFORE RUNNING THIS SCRIPT
 #
 
 
@@ -26,7 +27,7 @@ done
 
 backup_directory="$1"
 output_directory="$2"
-keys_directory="$3"
+key_source_directory="$3"
 
 
 identify_device_name () {
@@ -37,39 +38,36 @@ identify_device_name () {
     device_name=$(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
         | head -n 1 \
         | sed -E 's/"device_id":"(.*)"/\1/')
-    echo "$device_name"
 }
 
 
 update_cloud_settings () {
     # parameters: root directory of expanded backup, BOS name of controller device
+    # function returns 0 on success
     configuration_path="$1/cpt/plugins/DataServiceConfig"
     device_name="$2"
-    echo "$configuration_path"
-    echo "$device_name"
-    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; \
-                             s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; \
-                             s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; \ 
-                             s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
-    mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json"
-    # apply stream editor to the configuration file, using the above substitutions
-    sed -E "$sed_substitution_script" "$configuration_path/data_mapping.old.json" \
-        > "$configuration_path/data_mapping.json"
-    # get rid of temporary file
-    # rm "$configuration_path/data_mapping.old.json"
+    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
+    # using a temporary file, apply stream editor to the configuration file
+    mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json" \
+        && sed -E "$sed_substitution_script" "$configuration_path/data_mapping.old.json" \
+            > "$configuration_path/data_mapping.json" \
+        && rm "$configuration_path/data_mapping.old.json"
 }
 
 update_keys () {
     # parameters: root directory of expanded backup, BOS name of controller device
-    $keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
-    $private_key="rsa_private$2.pem"
-    $public_key="rsa_public$2.pem"
-    $ca_file="CA File.pem"
+    # function returns 0 on success
+    keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
+    private_key="rsa_private$2.pem"
+    public_key="rsa_public$2.pem"
+    ca_file="CA File.pem"
     # Update the certificate, private key and CA file
-    # rm "$keys_path"/*
-    cp "$keys_source_directory/$private_key" "$keys_path/$private_key" \
-        && cp "$keys_source_directory/$public_key" "$keys_path/$public_key" \
-        && cp "$keys_source_directory/$ca_file" "$keys_path/$ca_file" \
+    # delete old keys
+    [[ -d "$keys_path" ]] && rm "$keys_path"/*
+    # copy new ones from the keys source directory
+    cp "$key_source_directory/$private_key" "$keys_path/$private_key" \
+        && cp "$key_source_directory/$public_key" "$keys_path/$public_key" \
+        && cp "$key_source_directory/$ca_file" "$keys_path/$ca_file" \
         || echo "ERROR: Failed to copy key files." 1>&2
 }
 
@@ -104,7 +102,8 @@ for device_directory in $backup_directory/*; do
             || echo "ERROR: Failed to create $output_directory/$device_directory." 1>&2
 
         # Expand the backup into the output directory
-        tar -xz -C "$output_directory/$device_directory" -f "$backup_directory/$device_directory/$latest_backup" 
+        tar -xz -C "$output_directory/$device_directory" \
+            -f "$backup_directory/$device_directory/$latest_backup" 
 
         # Find the name of the root directory of the expanded backup
         for file in $output_directory/$device_directory/*; do 
@@ -113,19 +112,23 @@ for device_directory in $backup_directory/*; do
         done
 
         # Update settings and keys
-        identify_device_name "$output_directory/$device_directory/$expanded_root_dir"
-        update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name"
-        update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name"
+        # we use the $? status code to short-circuit in case of failure of the update
+        identify_device_name "$output_directory/$device_directory/$expanded_root_dir" \
+        && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+        && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+        || (echo "ERROR: Failed to update $device_directory." && continue)
 
         # Compress the backup and delete the expansion
-        tar cfz "$output_directory/$device_directory/$expanded_root_dir_updated.tgz" "$expanded_root_dir"
-        # tar cfz "$output_directory/$device_directory/$expanded_root_dir_updated.tgz" "$expanded_root_dir" \
-        #    && rm -rf "$output_directory/$device_directory/$expanded_root_dir" \
-        #    || echo "ERROR: Failed to create the output archive." 1>&2
+        tar_file_name="${latest_backup%.tgz}_updated.tgz"
+        tar -czf "$output_directory/$device_directory/$tar_file_name" \
+            "$output_directory/$device_directory/$expanded_root_dir" \
+            && rm -r "$output_directory/$device_directory/$expanded_root_dir" \
+            || echo "ERROR: Failed to create the output archive." 1>&2
 
-        echo "Done $device_directory/$latest_backup"
+        echo "$backup_directory/$device_directory/$latest_backup  -> " \
+             "$output_directory/$device_directory/$tar_file_name"
     else
-        echo "WARNING no backup file found for $latest_backup, skipping!" 1>&2 
+        echo "WARNING no backup file found for $backup_directory/$device_directory, skipping!" 1>&2 
     fi     
 done
 
