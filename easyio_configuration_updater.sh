@@ -25,9 +25,10 @@ for dir in "$@"; do
     fi
 done
 
-backup_directory="$1"
-output_directory="$2"
-key_source_directory="$3"
+# Store directory names, removing any trailing slash
+backup_directory="${1%/}"
+output_directory="${2%/}"
+key_source_directory="${3%/}"
 
 
 identify_device_name () {
