@@ -29,39 +29,57 @@ output_directory="$2"
 keys_directory="$3"
 
 
-update_cloud_settings () {
-     # parameter: root directory of expanded backup
-     $configuration_path="$1/cpt/plugins/DataServiceConfig"
-     sed_substitution_script='s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; \
-                              s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; \
-                              s/\"rsa_(private|public)[A-Z0-9]*\.pem\"/\"rsa_\1.pem\"/g' 
-     mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json"
-     cat "$configuration_path/data_mapping.old.json" \
-        | sed -E "$sed_substitution_script" > "$configuration_path/data_mapping.json"
-     rm "$configuration_path/data_mapping.old.json"
+identify_device_name () {
+    # parameter, path to expanded archive
+    parameter_file="$1/cpt/plugins/DataServiceConfig/data_mapping.json"
+    # find key:value pairs with device_id as key, then filter for the
+    # first one (which is the controller name)
+    device_name=$(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
+        | head -n 1 \
+        | sed -E 's/"device_id":"(.*)"/\1/')
+    echo "$device_name"
 }
 
+
+update_cloud_settings () {
+    # parameters: root directory of expanded backup, BOS name of controller device
+    configuration_path="$1/cpt/plugins/DataServiceConfig"
+    device_name="$2"
+    echo "$configuration_path"
+    echo "$device_name"
+    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; \
+                             s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; \
+                             s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; \ 
+                             s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
+    mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json"
+    # apply stream editor to the configuration file, using the above substitutions
+    sed -E "$sed_substitution_script" "$configuration_path/data_mapping.old.json" \
+        > "$configuration_path/data_mapping.json"
+    # get rid of temporary file
+    # rm "$configuration_path/data_mapping.old.json"
+}
 
 update_keys () {
-     # parameters: root directory of expanded backup, BOS name of controller device
-     $keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
-     $private_key="$2_private.pem"
-     $public_key="$2_public.pem"
-     $ca_file=""
-     # Update the certificate, private key and CA file
-     rm "$keys_path"/*
-     cp "$keys_source_directory/$private_key" "$keys_path/$private_key" \
-         && cp "$keys_source_directory/$public_key" "$keys_path/$public_key" \
-         && cp "$keys_source_directory/$ca_file" "$keys_path/$ca_file" \
-     || echo "ERROR: Failed to copy key files."
+    # parameters: root directory of expanded backup, BOS name of controller device
+    $keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
+    $private_key="rsa_private$2.pem"
+    $public_key="rsa_public$2.pem"
+    $ca_file="CA File.pem"
+    # Update the certificate, private key and CA file
+    # rm "$keys_path"/*
+    cp "$keys_source_directory/$private_key" "$keys_path/$private_key" \
+        && cp "$keys_source_directory/$public_key" "$keys_path/$public_key" \
+        && cp "$keys_source_directory/$ca_file" "$keys_path/$ca_file" \
+        || echo "ERROR: Failed to copy key files." 1>&2
 }
 
-# Identify device
-# grep -oE '"device_id":"[^"]+"' data_mapping.json | head -n 1 | sed -E 's/"device_id":"(.*)"/\1/'
 
 # Iterate through the list of device directories, which are expected in the form of IPv4 addresses, one per device
 echo "Processing EasyIO backup files in $backup_directory..."
 
+# Loop through all the device directories in turn and process the backups:
+# a corresponding device directory is created in the output directory with
+# modified backup files
 for device_directory in $backup_directory/*; do
     # find just the final part of the path 
     device_directory=$(basename "$device_directory")
@@ -69,21 +87,45 @@ for device_directory in $backup_directory/*; do
     # or it is in the wrong format
     [[ -d "$backup_directory/$device_directory" && \
         "$device_directory" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-    echo -n "Found device $device_directory"
-    # This shell syntax creates an array of all the files that match the pattern
+    # This shell syntax creates a bash parameter array of all the files that match the pattern
     set -- $backup_directory/$device_directory/*.tgz
-    # and we collect the name of just the final file in the list
+    # and we collect the name of just the final file in the list, the ! allows indirect variable
+    # expansion on the final parameter in the array, whose number is #. The upshot is that we
+    # should have selected at this point the most recent backup file if they are named in datetime
+    # order.
     latest_backup=$(basename "${!#}") 
-    # check the file is a regular file
+    # confirm that the selected file is a regular file, not a link, directory or wildcard
     if [[ -f "$backup_directory/$device_directory/$latest_backup" ]]; then
-        echo ": using backup $latest_backup"
-        # expand the backup
-        tar xfz "$backup_directory/$device_directory/$latest_backup"
-        # compress the backup
-        tar cfz "$output_directory/$device_directory/updated_$latest_backup" "$expanded_root_dir" 
-        
+
+        # make a directory for the device in the output directory
+        # if it doesn't already exist
+        [[ -d "$output_directory/$device_directory" ]] \
+            || mkdir "$output_directory/$device_directory" \
+            || echo "ERROR: Failed to create $output_directory/$device_directory." 1>&2
+
+        # Expand the backup into the output directory
+        tar -xz -C "$output_directory/$device_directory" -f "$backup_directory/$device_directory/$latest_backup" 
+
+        # Find the name of the root directory of the expanded backup
+        for file in $output_directory/$device_directory/*; do 
+            # It just grabs the name of the first directory it can find
+            [[ -d "$file" ]] && expanded_root_dir=$(basename "$file") && break
+        done
+
+        # Update settings and keys
+        identify_device_name "$output_directory/$device_directory/$expanded_root_dir"
+        update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name"
+        update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name"
+
+        # Compress the backup and delete the expansion
+        tar cfz "$output_directory/$device_directory/$expanded_root_dir_updated.tgz" "$expanded_root_dir"
+        # tar cfz "$output_directory/$device_directory/$expanded_root_dir_updated.tgz" "$expanded_root_dir" \
+        #    && rm -rf "$output_directory/$device_directory/$expanded_root_dir" \
+        #    || echo "ERROR: Failed to create the output archive." 1>&2
+
+        echo "Done $device_directory/$latest_backup"
     else
-        echo ": WARNING no backup file found for $latest_backup!"
+        echo "WARNING no backup file found for $latest_backup, skipping!" 1>&2 
     fi     
 done
 
