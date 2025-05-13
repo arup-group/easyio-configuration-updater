@@ -73,7 +73,7 @@ function Update-Keys {
 Write-Host "Processing EasyIO backup files in $BackupDirectory..."
 
 foreach ($DeviceDirectory in Get-ChildItem $BackupDirectory | Where-Object { $_.PSIsContainer -and $_.Name -match '^\d+\.\d+\.\d+\.\d+$' }) {
-    $LatestBackup = Get-ChildItem "$BackupDirectory\$($DeviceDirectory.Name)\*.tgz" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $LatestBackup = Get-ChildItem "$BackupDirectory\$($DeviceDirectory.Name)\*.tgz" | Sort-Object -Descending | Select-Object -First 1
 
     if ($LatestBackup -and $LatestBackup.PSIsContainer -eq $false) {
         $OutputDeviceDir = "$OutputDirectory\$($DeviceDirectory.Name)"
@@ -96,11 +96,11 @@ foreach ($DeviceDirectory in Get-ChildItem $BackupDirectory | Where-Object { $_.
 
         # Compress updated backup
         $UpdatedBackupName = "$($LatestBackup.BaseName)_updated.tgz"
-        tar -czf "$OutputDeviceDir\$UpdatedBackupName" -C "$OutputDeviceDir\$ExpandedRootDir" .
+        tar -cz -C "$OutputDeviceDir" -f "$OutputDeviceDir\$UpdatedBackupName" "$ExpandedRootDir" 
 
         # Cleanup
-        Remove-Item "$OutputDeviceDir\$ExpandedRootDir" -Recurse -Force
-        Write-Host "$LatestBackup.FullName -> $OutputDeviceDir\$UpdatedBackupName"
+        Remove-Item "$OutputDeviceDir\$ExpandedRootDir" -Recurse
+        Write-Host "$BackupDirectory\$(LatestBackup.BaseName)  ->  $OutputDeviceDir\$UpdatedBackupName"
     } else {
         Write-Warning "No backup file found for $($DeviceDirectory.Name), skipping!"
     }

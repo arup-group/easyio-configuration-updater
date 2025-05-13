@@ -120,8 +120,8 @@ for device_directory in $backup_directory/*; do
 
         # Compress the backup and delete the expansion
         tar_file_name="${latest_backup%.tgz}_updated.tgz"
-        tar -czf "$output_directory/$device_directory/$tar_file_name" \
-            "$output_directory/$device_directory/$expanded_root_dir" \
+        tar -cz -C "$output_directory/$device_directory" \
+            -f "$output_directory/$device_directory/$tar_file_name" "$expanded_root_dir" \
             && rm -r "$output_directory/$device_directory/$expanded_root_dir" \
             || echo "ERROR: Failed to create the output archive." 1>&2
 
