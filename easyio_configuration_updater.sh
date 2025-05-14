@@ -25,10 +25,9 @@ for dir in "$@"; do
     fi
 done
 
-# Store directory names, removing any trailing slash
-backup_directory="${1%/}"
-output_directory="${2%/}"
-key_source_directory="${3%/}"
+backup_directory="$1"
+output_directory="$2"
+key_source_directory="$3"
 
 
 identify_device_name () {
@@ -115,19 +114,19 @@ for device_directory in $backup_directory/*; do
         # Update settings and keys
         # we use the $? status code to short-circuit in case of failure of the update
         identify_device_name "$output_directory/$device_directory/$expanded_root_dir" \
-        && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
-        && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
-        || (echo "ERROR: Failed to update $device_directory." && continue)
+            && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+            && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+            || (echo "ERROR: Failed to update $device_directory." && continue)
 
-        # Compress the backup and delete the expansion
-        tar_file_name="${latest_backup%.tgz}_updated.tgz"
-        tar -cz -C "$output_directory/$device_directory" \
-            -f "$output_directory/$device_directory/$tar_file_name" "$expanded_root_dir" \
-            && rm -r "$output_directory/$device_directory/$expanded_root_dir" \
+        # Rename and compress the backup, and delete the expansion
+        mv "$output_directory/$device_directory/$expanded_root_dir" "$output_directory/$device_directory/updated_backup" \
+            && tar -czf "$output_directory/$device_directory/updated_backup.tgz" \
+                -C "$output_directory/$device_directory" "updated_backup" \
+            && rm -r "$output_directory/$device_directory/updated_backup" \
             || echo "ERROR: Failed to create the output archive." 1>&2
 
         echo "$backup_directory/$device_directory/$latest_backup  -> " \
-             "$output_directory/$device_directory/$tar_file_name"
+             "$output_directory/$device_directory/updated_backup.tgz"
     else
         echo "WARNING no backup file found for $backup_directory/$device_directory, skipping!" 1>&2 
     fi     
