@@ -1,4 +1,4 @@
-# VERSION: 0.2
+# VERSION: 0.4
 # Key and config rotator for EasyIO devices
 # This script loops over a directory of backup files and puts modified backup files
 # into an output directory

@@ -27,24 +27,32 @@ The project runs in a command line or terminal environment. Windows computers ne
 for Windows, MSYS2 or WSL installed to use the bash shell script version. Alternatively, the
 transliterated Powershell version can run in a Powershell window.
 
-## Examples
+## Example workflow
 
-### To generate new keys for a group of EasyIO devices
+### Download backup files for update
 
-This script will scan the automation directory for backup files and create new keys in the
-supplied directory. The destination must be empty of keys, to avoid mistakes. 
+`BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml`
 
-```./easyio_key_generator.sh backups_directory new_keys_directory```
+### Generate new keys
 
-### To install keys and updates to cloud configuration file
+This script will scan the backup automation directory for backup files and create new keys
+in the supplied directory. To reduce over-writing risks, the script will exit if this
+destination is not empty of keys.
 
-This script will scan the automation directory for backup files and create an expansion of
+`./easyio_key_generator.sh 01_backup_and_download new_keys_directory`
+
+### Install keys and updates to cloud configuration file
+
+This script will scan the download directory for backup files and create an expansion of
 each archive in the supplied output directory. Using the supplied keys directory, it will
 install new keys in the appropriate location in the backup path and also edit the
-```data_mapping.json``` file in the ```DataServiceConfig``` folder. Finally it will re-archive
+`data_mapping.json` file in the `DataServiceConfig` folder. Finally it will re-archive
 the edited backup ready for upload and restore to the controller.
 
-```./easyio_configuration_updater.sh backups_directory updated_backups_directory keys_directory```
+`./easyio_configuration_updater.sh 01_backup_and_download 02_upload_and_restore new_keys_directory`
 
+### Upload and restore the modified backup
+
+`BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml`
 
 
