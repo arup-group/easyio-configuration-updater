@@ -30,7 +30,7 @@ keys_directory="$2"
 # Check that the keys directory is empty, or only has a CA file in it. This
 # is to avoid existing keys from being overwritten by accident.
 for file in $keys_directory/*; do 
-    if ! [[ $file =~ CA.* ]]; then
+    if [[ -f $file ]] && ! [[ $file =~ CA.* ]]; then
         echo "STOP: keys directory already has keys in it." 1>&2
         exit 1
     fi
@@ -102,7 +102,7 @@ for device_directory in $backup_directory/*; do
             rm -r "$backup_directory/$device_directory/$expanded_root_dir"
 
         echo "$backup_directory/$device_directory/$latest_backup  -> " \
-             "$device_name key made."
+             "$device_name key pair made."
     else
         echo "WARNING no backup file found for $backup_directory/$device_directory, skipping!" 1>&2 
     fi     
