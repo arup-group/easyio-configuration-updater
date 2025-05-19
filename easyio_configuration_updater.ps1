@@ -19,18 +19,19 @@ if (-not $BackupProjectDirectory -or -not $OutputProjectDirectory -or -not $Keys
 # Check that the provided directories exist
 foreach ($dir in $BackupProjectDirectory, $OutputProjectDirectory, $KeysDirectory) {
     if (-not (Test-Path -Path $dir -PathType Container)) {
-        Write-Host "$dir does not exist, quitting."
+        Write-Host "$dir does not exist, quitting." | Write-Error
         exit 1
     }
 }
 
+# Function to identify the device name
 function Identify-DeviceName {
     param (
         [string]$ExpandedArchivePath
     )
     $ParameterFile = "$ExpandedArchivePath\cpt\plugins\DataServiceConfig\data_mapping.json"
 
-    $DeviceName = (Select-String -Path $ParameterFile -Pattern '"device_id":"[^"]+"' | Select-Object -First 1).Line -replace '"device_id":"(.*)"', '$1'
+    $DeviceName = Select-String -Path $ParameterFile -Pattern '"device_id":"([^"]+)"' | % {$_.matches.groups[1].value} | Select-Object -First 1
     return $DeviceName
 }
 
@@ -48,8 +49,9 @@ function Update-CloudSettings {
         -replace '"mqtt.googleapis.com"', '"mqtt.bos.goog"' `
         -replace '"rsa_private[A-Z0-9]*\.pem"', "`"rsa_private$DeviceName.pem`"" `
         -replace '"rsa_public[A-Z0-9]*\.pem"', "`"rsa_public$DeviceName.pem`"" | Set-Content $NewFile
-    
-    Rename-Item -Path $NewFile -NewName "data_mapping.json"
+
+    # In Powershell, we can't rename a file onto a destination that already exists, so use 'Move-Item' instead    
+    Move-Item -Path $NewFile -Destination $OldFile -Force
 }
 
 function Update-Keys {
@@ -74,34 +76,49 @@ function Update-Keys {
 
 Write-Host "Processing EasyIO backup files in $BackupProjectDirectory..."
 
-foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory) {
-    if ($DeviceDirectory.PSIsContainer -and $DeviceDirectory.Name -match '^\d+\.\d+\.\d+\.\d+$') {
-        $LatestBackup = (Get-ChildItem "$DeviceDirectory\*.tgz" | Sort-Object Name | Select-Object -Last 1).FullName
+foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Directory) {
+    if ($DeviceDirectory.Name -match '^\d+\.\d+\.\d+\.\d+$') {
 
-        if (Test-Path -Path $LatestBackup -PathType Leaf) {
-            $OutputDeviceDirectory = "$OutputProjectDirectory\$($DeviceDirectory.Name)"
+        # Save names of input and output directories, and backup file name, as strings
+        $InputDeviceDirectory = "$BackupProjectDirectory\$($DeviceDirectory.Name)"
+        $OutputDeviceDirectory = "$OutputProjectDirectory\$($DeviceDirectory.Name)"
+        $LatestBackup = (Get-ChildItem "$BackupProjectDirectory\$($DeviceDirectory.Name)\*.tgz" | Sort-Object Name | Select-Object -Last 1).Name
+        
+        # If we've got a valid archive file, then process it
+        if (Test-Path -Path "$InputDeviceDirectory\$LatestBackup" -PathType Leaf) {
 
+            # Create an output folder for the device, if it doesn't exist already
             if (-not (Test-Path -Path $OutputDeviceDirectory)) {
-                New-Item -ItemType Directory -Path $OutputDeviceDirectory
+                New-Item -ItemType Directory -Path $OutputDeviceDirectory | Out-Null
             }
 
-            Expand-Archive -Path $LatestBackup -DestinationPath $OutputDeviceDirectory
+            # Expand the archive into the output project folder
+            tar -xz -C "$OutputDeviceDirectory" -f "$InputDeviceDirectory\$LatestBackup"
 
-            $ExpandedRootDir = Get-ChildItem -Path $OutputDeviceDirectory | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+            # Get the root directory
+            $ExpandedRootDir = (Get-ChildItem -Path $OutputDeviceDirectory -Directory | Select-Object -First 1).Name
 
+            # Make the changes and then re-archive the directory with a new name
             if ($ExpandedRootDir) {
-                $DeviceName = Identify-DeviceName $ExpandedRootDir.FullName
-                Update-CloudSettings $ExpandedRootDir.FullName $DeviceName
-                Update-Keys $ExpandedRootDir.FullName $DeviceName
+                $DeviceName = Identify-DeviceName "$OutputDeviceDirectory\$ExpandedRootDir"
+                Update-CloudSettings "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
+                Update-Keys "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
 
-                Compress-Archive -Path "$OutputDeviceDirectory\updated_backup" -DestinationPath "$OutputDeviceDirectory\updated_backup.tgz"
+                Rename-Item -Path "$OutputDeviceDirectory\$ExpandedRootDir" -NewName "updated_backup"
+                tar -czf "$OutputDeviceDirectory\updated_backup.tgz" -C "$OutputDeviceDirectory" "updated_backup" 
                 Remove-Item "$OutputDeviceDirectory\updated_backup" -Recurse -Force
+            }
 
-                Write-Host "$LatestBackup  ->  $OutputDeviceDirectory\updated_backup.tgz"
+            # Report on success or fail
+            if (Test-Path -Path "$OutputDeviceDirectory\updated_backup.tgz" -PathType Leaf) {
+                Write-Host "$InputDeviceDirectory\$LatestBackup  ->  $OutputDeviceDirectory\updated_backup.tgz"
+            }
+            else {
+                Write-Host "ERROR: Failed to write $OutputDeviceDirectory\updated_backup.tgz." | Write-Error
             }
         }
         else {
-            Write-Host "WARNING: No backup file found for $($DeviceDirectory.Name), skipping!"
+            Write-Host "WARNING: No backup file found for $InputDeviceDirectory, skipping!" | Write-Error
         }
     }
 }
