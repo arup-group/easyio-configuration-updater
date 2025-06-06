@@ -1,8 +1,15 @@
-# VERSION: 0.4
+# VERSION: 0.6
 # Key and config rotator for EasyIO devices
 # This script loops over a directory of backup files and puts modified backup files
-# into an output directory
+# into an output directory.
+#
 # TLS KEYS MUST BE GENERATED BEFORE RUNNING THIS SCRIPT
+#
+# Be aware that Powershell, especially old versions, can corrupt Unix text files by
+# using CRLF at line endings or inserting a byte-order mark (BOM) at the beginning
+# of the file. This behaviour is possible on Powershell 5.1 (Windows 10) even with UTF8
+# output encoding, and the script therefore has parameters to remove BOM and translate
+# CRLF to LF when writing files.
 
 param(
     [string]$BackupProjectDirectory,
@@ -45,10 +52,15 @@ function Update-CloudSettings {
     $OldFile = "$ConfigurationPath\data_mapping.json"
     $NewFile = "$ConfigurationPath\data_mapping.updated.json"
 
+    # The -Encoding utf8 causes Powershell to use Unix-type line endings and will not have a BOM
+    # from Powershell version 6 onwards. For older Powershell (shipped with Windows 10), use -Encoding ASCII
+    # to prevent the BOM from being inserted
     (Get-Content $OldFile) -replace '"essential-keep-197822"', '"bos-platform-prod"' `
         -replace '"mqtt.googleapis.com"', '"mqtt.bos.goog"' `
         -replace '"rsa_private[A-Z0-9]*\.pem"', "`"rsa_private$DeviceName.pem`"" `
-        -replace '"rsa_public[A-Z0-9]*\.pem"', "`"rsa_public$DeviceName.pem`"" | Set-Content $NewFile
+        -replace '"rsa_public[A-Z0-9]*\.pem"', "`"rsa_public$DeviceName.pem`"" `
+        -replace "`r`n", "`n" `
+        | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
 
     # In Powershell, we can't rename a file onto a destination that already exists, so use 'Move-Item' instead    
     Move-Item -Path $NewFile -Destination $OldFile -Force
@@ -73,6 +85,52 @@ function Update-Keys {
     Copy-Item "$KeysDirectory\$PublicKey" "$KeysPath\$PublicKey"
     Copy-Item "$KeysDirectory\$CAFile" "$KeysPath\$CAFile"
 }
+
+function Update-TimeSettings {
+    param (
+        [string]$ExpandedBackupRoot
+    )
+
+    # Define the new content for time.dat
+    $newTimeDat = @"
+UTC Offset:0
+Time Zone:Etc/UTC
+DST Offset:0
+DST Start On:-1
+DST Start Date:1,0
+DST Start Time:0,0
+DST End On:-1
+DST End Date:1,0
+DST End Time:0,0
+
+"@
+
+    # Directory and file for firmware data expansion
+    $firmwareDir = "$ExpandedBackupRoot\firmware_data"
+    $firmwareTar = "$ExpandedBackupRoot\firmware_data.tar"
+
+    try {
+        # Create the temporary directory
+        New-Item -ItemType Directory -Path $firmwareDir -ErrorAction Stop | Out-Null
+
+        # Extract the firmware archive into the temporary directory
+        tar -x -C $firmwareDir -f $firmwareTar
+
+        # Replace time.dat with the new configuration, using Unix-style line endings
+        ($newTimeDat) -replace "`r`n", "`n" `
+            | Out-File -FilePath "$firmwareDir\time.dat" -Encoding ascii -NoNewLine
+
+        # Recompress the firmware directory into firmware_data.tar
+        tar -cf $firmwareTar -C $firmwareDir .
+
+        # Remove the temporary directory
+        Remove-Item -Recurse -Force $firmwareDir
+    }
+    catch {
+        Write-Error "ERROR: Failed to update time.dat file. $_"
+    }
+}
+
 
 Write-Host "Processing EasyIO backup files in $BackupProjectDirectory..."
 
@@ -103,6 +161,7 @@ foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Direct
                 $DeviceName = Identify-DeviceName "$OutputDeviceDirectory\$ExpandedRootDir"
                 Update-CloudSettings "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
                 Update-Keys "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
+                Update-TimeSettings "$OutputDeviceDirectory\$ExpandedRootDir"
 
                 Rename-Item -Path "$OutputDeviceDirectory\$ExpandedRootDir" -NewName "updated_backup"
                 tar -czf "$OutputDeviceDirectory\updated_backup.tgz" -C "$OutputDeviceDirectory" "updated_backup" 

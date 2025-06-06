@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# VERSION: 0.4
+# VERSION: 0.6
 #
 # Key and config rotator for EasyIO devices
 # This script loops over a directory of backup files and puts modified backup files
