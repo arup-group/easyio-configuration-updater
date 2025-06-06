@@ -43,7 +43,6 @@ identify_device_name () {
 
 update_cloud_settings () {
     # parameters: root directory of expanded backup, BOS name of controller device
-    # function returns 0 on success
     configuration_path="$1/cpt/plugins/DataServiceConfig"
     device_name="$2"
     sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
@@ -56,7 +55,6 @@ update_cloud_settings () {
 
 update_keys () {
     # parameters: root directory of expanded backup, BOS name of controller device
-    # function returns 0 on success
     keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
     private_key="rsa_private$2.pem"
     public_key="rsa_public$2.pem"
@@ -71,6 +69,30 @@ update_keys () {
         || echo "ERROR: Failed to copy key files." 1>&2
 }
 
+update_time_settings () {
+    # parameter: root directory of expanded backup
+    # sets the time configuration to use UTC with no daylight savings time
+    read -r -d '' new_time_dot_dat << _EOF_
+UTC Offset:0
+Time Zone:Etc/UTC
+DST Offset:0
+DST Start On:-1
+DST Start Date:1,0
+DST Start Time:0,0
+DST End On:-1
+DST End Date:1,0
+DST End Time:0,0
+_EOF_
+    # expand the firmware.tar file into a temporary directory
+    # replace the time.dat file with the contents of the heredoc
+    # then recompress the firmware.tar file and remove the temporary directory.
+    mkdir "$1/firmware_data" \
+    && tar -x -C "$1/firmware_data" -f "$1/firmware_data.tar" \
+    && printf "%s\n" "$new_time_dot_dat" > "$1/firmware_data/time.dat" \
+    && tar -cf "$1/firmware_data.tar" -C "$1/firmware_data" . \
+    && rm -r "$1/firmware_data" \
+    || echo "ERROR: Failed to update time.dat file." 1>&2
+}
 
 # Iterate through the list of device directories, which are expected in the form of IPv4 addresses, one per device
 echo "Processing EasyIO backup files in $backup_directory..."
@@ -111,11 +133,12 @@ for device_directory in $backup_directory/*; do
             [[ -d "$file" ]] && expanded_root_dir=$(basename "$file") && break
         done
 
-        # Update settings and keys
+        # Update settings, keys and time configuration
         # we use the $? status code to short-circuit in case of failure of the update
         identify_device_name "$output_directory/$device_directory/$expanded_root_dir" \
             && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
             && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+            && update_time_settings "$output_directory/$device_directory/$expanded_root_dir" \
             || (echo "ERROR: Failed to update $device_directory." && continue)
 
         # Rename and compress the backup, and delete the expansion
