@@ -16,6 +16,8 @@ download workflow.
 
 5. Update the MQTT configuration.
 
+6. Update the time settings to use UTC with no daylight savings time.
+
 6. Re-archive the updated files and prepares the backups for an upload and restore workflow.
 
 ## System requirements
@@ -46,13 +48,14 @@ will exit if this destination is not empty of keys.
 The `easyio_configuration_updater.sh` script will scan the download directory for backup files
 and create an expansion of each archive in the supplied output directory. Using the supplied
 keys directory, it will install new keys in the appropriate location in the backup path and
-also edit the `data_mapping.json` file in the `DataServiceConfig` folder. Finally it will
-re-archive the edited backup ready for upload and restore to the controller.
+edit the `data_mapping.json` file in the `DataServiceConfig` folder. It will also update the
+`time.dat` file within the `firmware_data.tar` file. Finally it will re-archive the edited
+backup ready for upload and restore to the controller.
 
 The four steps below are:
 - Create and download backup files from controllers
 - Create new keys using device name information in backup files
-- Install keys and updates to cloud configuration file in an altered version of each backup file
+- Install keys and other updates in an altered version of each backup file
 - Upload backup files and restore
 
 Bash shell:
