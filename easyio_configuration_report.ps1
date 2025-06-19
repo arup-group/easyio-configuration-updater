@@ -10,7 +10,7 @@ param(
 
 # Check that required parameter is provided and it exists
 if (-not $BackupProjectDirectory -or -not (Test-Path -Path $BackupProjectDirectory -PathType Container)) {
-    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [backup_project_directory]" | Write-Error
+    Write-Error "Usage: $($MyInvocation.MyCommand.Name) [backup_project_directory]"
     exit 1
 }
 
@@ -122,8 +122,10 @@ function Identify-KitNames {
 }
 
 
-Write-Host "Processing EasyIO backup files in $BackupProjectDirectory..."
+Write-Output "Processing EasyIO backup files in $BackupProjectDirectory..."
+# Clobber the output file, then append
 Write-Host "`"ip_address`",`"device_name`",`"proxy_device_names`",`"sedona_kits`""
+Write-Output "`"ip_address`",`"device_name`",`"proxy_device_names`",`"sedona_kits`"" | Out-File -Encoding ascii "$BackupProjectDirectory\audit.csv"
 
 foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Directory) {
     if ($DeviceDirectory.Name -match '^\d+\.\d+\.\d+\.\d+$') {
@@ -146,29 +148,30 @@ foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Direct
                 $DeviceName = Identify-DeviceName "$InputDeviceDirectory\$ExpandedRootDir"
                 $ProxyDeviceNames = Identify-ProxyDeviceNames "$InputDeviceDirectory\$ExpandedRootDir"
                 if (-not $DeviceName -or -not $ProxyDeviceNames) {
-                    Write-Host "ERROR: Failed to identify device name(s)." | Write-Error
+                    Write-Error "ERROR: Failed to identify device name(s)."
                 }
 
                 $KitNames = Identify-KitNames "$InputDeviceDirectory\$ExpandedRootDir\app.sab"
                 if (-not $KitNames) {
-                    Write-Host "ERROR: Failed to identify Sedona kit name(s)." | Write-Error
+                    Write-Error "ERROR: Failed to identify Sedona kit name(s)."
                 }
 
                 # Output information found for this backup file
-                Write-Host "`"$DeviceDirectory`",`"$DeviceName`",`"$ProxyDeviceNames`",`"$KitNames`""
+                Write-Host "`"$($DeviceDirectory.Name)`",`"$DeviceName`",`"$ProxyDeviceNames`",`"$KitNames`""
+                Write-Output "`"$($DeviceDirectory.Name)`",`"$DeviceName`",`"$ProxyDeviceNames`",`"$KitNames`"" | Out-File -Append -Encoding ascii "$BackupProjectDirectory\audit.csv"
 
                 # Delete the expanded directory
                 Remove-Item "$InputDeviceDirectory\$ExpandedRootDir" -Recurse -Force
 
             } else {
-                Write-Host "ERROR: Failed to expand or find archive root directory." | Write-Error
+                Write-Error "ERROR: Failed to expand or find archive root directory."
             }
 
         } else {
-            Write-Host "WARNING: No backup file found for $DeviceDir, skipping!" | Write-Error
+            Write-Error "WARNING: No backup file found for $DeviceDir, skipping!"
         }
     }
 }
 
-Write-Host "Finished."
+Write-Output "Finished."
 
