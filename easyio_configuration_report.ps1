@@ -32,7 +32,7 @@ function Identify-ProxyDeviceNames {
     )
     $ParameterFile = "$ExpandedArchivePath\cpt\plugins\DataServiceConfig\data_mapping.json"
 
-    $DeviceName = Select-String -Path $ParameterFile -Pattern '"device_id":"([^"]+)"' | % {$_.matches.groups[1].value} | Select-Object -Skip 1
+    $ProxyDeviceNames = Select-String -Path $ParameterFile -Pattern '"device_id":"([^"]+)"' -AllMatches | ForEach-Object {$_.matches.value | Select-String -Pattern '"device_id":"([^"]+)"' | % {$_.matches.groups[1].value}} | Select-Object -Skip 1 
     return $ProxyDeviceNames
 }
 
@@ -144,7 +144,7 @@ foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Direct
             # Find the device name, proxy device names and kit names
             if ($ExpandedRootDir) {
                 $DeviceName = Identify-DeviceName "$InputDeviceDirectory\$ExpandedRootDir"
-                $ProxyDeviceNames = Identify-DeviceNames "$InputDeviceDirectory\$ExpandedRootDir"
+                $ProxyDeviceNames = Identify-ProxyDeviceNames "$InputDeviceDirectory\$ExpandedRootDir"
                 if (-not $DeviceName -or -not $ProxyDeviceNames) {
                     Write-Host "ERROR: Failed to identify device name(s)." | Write-Error
                 }
@@ -155,7 +155,7 @@ foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Direct
                 }
 
                 # Output information found for this backup file
-                Write-Host "`"$DeviceDirectory.Name`",`"$DeviceName`",`"$ProxyDeviceNames`",`"$KitNames`""
+                Write-Host "`"$DeviceDirectory`",`"$DeviceName`",`"$ProxyDeviceNames`",`"$KitNames`""
 
                 # Delete the expanded directory
                 Remove-Item "$InputDeviceDirectory\$ExpandedRootDir" -Recurse -Force
