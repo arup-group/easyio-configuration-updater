@@ -81,13 +81,13 @@ If existing keys are to be retained, the step to generate new keys is omitted, a
 Bash shell:
 ```
 ./BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml
-easyio-configuration-updater/easyio_configuration_updater.sh data/projects/01_backup_and_download
+easyio-configuration-updater/easyio_configuration_updater.sh data/projects/01_backup_and_download data/projects/02_upload_and_restore
 ./BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
 ```
 
 Powershell:
 ```
 .\BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml
-easyio-configuration-updater\easyio_configuration_updater.ps1 data\projects\01_backup_and_download
+easyio-configuration-updater\easyio_configuration_updater.ps1 data\projects\01_backup_and_download data\projects\02_upload_and_restore
 .\BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
 ```
