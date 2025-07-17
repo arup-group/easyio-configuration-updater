@@ -54,8 +54,8 @@ function Generate-Key {
 
     & ssh-keygen -b 2048 -t rsa-sha2-256 -f "$KeysDir\newkey" -q -N `"`" | Out-Null
     if ($?) {
-        Move-Item -Path "$KeysDir\newkey" -Destination "$KeysDir\$PrivateKey"
-        Move-Item -Path "$KeysDir\newkey.pub" -Destination "$KeysDir\$PublicKey"
+        Move-Item -Path "$KeysDir\newkey" -Destination "$KeysDir\$PrivateKey" -Force
+        Move-Item -Path "$KeysDir\newkey.pub" -Destination "$KeysDir\$PublicKey" -Force
     } else {
         Write-Host "ERROR: Failed to generate new key for $DeviceName." | Write-Error
     }
