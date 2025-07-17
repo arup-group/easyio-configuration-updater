@@ -76,3 +76,18 @@ easyio-configuration-updater\easyio_configuration_updater.ps1 data\projects\01_b
 .\BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
 ```
 
+If existing keys are to be retained, the step to generate new keys is omitted, and the parameter that references the new keys directory is omitted in the subsequent step. Proceed as follows:
+
+Bash shell:
+```
+./BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml
+easyio-configuration-updater/easyio_configuration_updater.sh data/projects/01_backup_and_download
+./BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
+```
+
+Powershell:
+```
+.\BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml
+easyio-configuration-updater\easyio_configuration_updater.ps1 data\projects\01_backup_and_download
+.\BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
+```
