@@ -18,14 +18,19 @@ param(
 )
 
 # Check that all required parameters are provided
-if (-not $BackupProjectDirectory -or -not $OutputProjectDirectory -or -not $KeysDirectory) {
+if (-not $BackupProjectDirectory -or -not $OutputProjectDirectory) {
     Write-Host "Usage: $($MyInvocation.MyCommand.Name) [backup_project_directory] [output_project_directory] [keys_directory]"
     exit 1
 }
 
-# Check that the provided directories exist
+# Check if optional keys directory is provided
+if (-not $KeysDirectory) {
+    Write-Host "Note: keys directory not provided, existing keys in backups will be retained."
+}
+
+# Check that the provided directories exist on valid paths
 foreach ($dir in $BackupProjectDirectory, $OutputProjectDirectory, $KeysDirectory) {
-    if (-not (Test-Path -Path $dir -PathType Container)) {
+    if ($dir -and -not (Test-Path -Path $dir -PathType Container)) {
         Write-Host "$dir does not exist, quitting." | Write-Error
         exit 1
     }
@@ -57,8 +62,6 @@ function Update-CloudSettings {
     # to prevent the BOM from being inserted
     (Get-Content $OldFile) -replace '"essential-keep-197822"', '"bos-platform-prod"' `
         -replace '"mqtt.googleapis.com"', '"mqtt.bos.goog"' `
-        -replace '"rsa_private[A-Z0-9]*\.pem"', "`"rsa_private$DeviceName.pem`"" `
-        -replace '"rsa_public[A-Z0-9]*\.pem"', "`"rsa_public$DeviceName.pem`"" `
         -replace "`r`n", "`n" `
         | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
 
@@ -84,6 +87,22 @@ function Update-Keys {
     Copy-Item "$KeysDirectory\$PrivateKey" "$KeysPath\$PrivateKey"
     Copy-Item "$KeysDirectory\$PublicKey" "$KeysPath\$PublicKey"
     Copy-Item "$KeysDirectory\$CAFile" "$KeysPath\$CAFile"
+
+    # Update key references in configuration file
+    $ConfigurationPath = "$ExpandedBackupRoot\cpt\plugins\DataServiceConfig"
+    $OldFile = "$ConfigurationPath\data_mapping.json"
+    $NewFile = "$ConfigurationPath\data_mapping.updated.json"
+
+    # The -Encoding utf8 causes Powershell to use Unix-type line endings and will not have a BOM
+    # from Powershell version 6 onwards. For older Powershell (shipped with Windows 10), use -Encoding ASCII
+    # to prevent the BOM from being inserted
+    (Get-Content $OldFile) -replace '"rsa_private[A-Z0-9]*\.pem"', "`"rsa_private$DeviceName.pem`"" `
+        -replace '"rsa_public[A-Z0-9]*\.pem"', "`"rsa_public$DeviceName.pem`"" `
+        -replace "`r`n", "`n" `
+        | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
+
+    # In Powershell, we can't rename a file onto a destination that already exists, so use 'Move-Item' instead    
+    Move-Item -Path $NewFile -Destination $OldFile -Force
 }
 
 function Update-TimeSettings {
@@ -160,7 +179,9 @@ foreach ($DeviceDirectory in Get-ChildItem -Path $BackupProjectDirectory -Direct
             if ($ExpandedRootDir) {
                 $DeviceName = Identify-DeviceName "$OutputDeviceDirectory\$ExpandedRootDir"
                 Update-CloudSettings "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
-                Update-Keys "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
+                if ($KeysDirectory) {
+                    Update-Keys "$OutputDeviceDirectory\$ExpandedRootDir" $DeviceName
+                }
                 Update-TimeSettings "$OutputDeviceDirectory\$ExpandedRootDir"
 
                 Rename-Item -Path "$OutputDeviceDirectory\$ExpandedRootDir" -NewName "updated_backup"
