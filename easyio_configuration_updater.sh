@@ -30,19 +30,27 @@ output_directory="$2"
 key_source_directory="$3"
 
 
-identify_device_name () {
+identify_device_names () {
     # parameter, path to expanded archive
     parameter_file="$1/cpt/plugins/DataServiceConfig/data_mapping.json"
     # find key:value pairs with device_id as key, then filter for the
     # first one (which is the controller name)
-    device_name=$(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
-        | head -n 1 \
-        | sed -E 's/"device_id":"(.*)"/\1/')
+    all_device_names=$(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
+        | sed -E 's/"device_id":"(.*)"/\1/' | readarray -t)
+    device_name=${all_device_names[0]}
 }
-
 
 update_cloud_settings () {
     # parameters: root directory of expanded backup, BOS name of controller device
+    # the name of the keys for each virtual device take the following form
+    # EXISTING
+    # "ca_file":"CA File.pem"
+    # "key_file":"rsa_private_DEV-0000.pem"
+    # "cert_file":"rsa_public_DEV-0000.pem"
+    # NEW
+    # "ca_file":"CA File.pem"
+    # "key_file":"rsa_private_DEV-0000.pem"
+    # "cert_file":"rsa_cert_DEV-0000.pem" 
     configuration_path="$1/cpt/plugins/DataServiceConfig"
     device_name="$2"
     sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
@@ -54,7 +62,7 @@ update_cloud_settings () {
 }
 
 update_keys () {
-    # parameters: root directory of expanded backup, BOS name of controller device
+    # parameters: root directory of expanded backup, BOS name of controller and proxy devices
     keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
     private_key="rsa_private$2.pem"
     public_key="rsa_public$2.pem"
@@ -137,7 +145,7 @@ for device_directory in $backup_directory/*; do
         # we use the $? status code to short-circuit in case of failure of the update
         identify_device_name "$output_directory/$device_directory/$expanded_root_dir" \
             && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
-            && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+            && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$all_device_names" \
             && update_time_settings "$output_directory/$device_directory/$expanded_root_dir" \
             || (echo "ERROR: Failed to update $device_directory." && continue)
 
