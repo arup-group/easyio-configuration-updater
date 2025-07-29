@@ -28,32 +28,30 @@ done
 backup_directory="$1"
 output_directory="$2"
 key_source_directory="$3"
-
+ca_file="CA File.pem"
 
 identify_device_names () {
     # parameter, path to expanded archive
     parameter_file="$1/cpt/plugins/DataServiceConfig/data_mapping.json"
     # find key:value pairs with device_id as key, then filter for the
     # first one (which is the controller name)
-    all_device_names=$(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
-        | sed -E 's/"device_id":"(.*)"/\1/' | readarray -t)
+    readarray -t all_device_names <<< $(grep -oE '"device_id":"[^"]+"' "$parameter_file" \
+        | sed -E 's/"device_id":"(.*)"/\1/')
     device_name=${all_device_names[0]}
 }
 
 update_cloud_settings () {
-    # parameters: root directory of expanded backup, BOS name of controller device
+    # parameters: root directory of expanded backup
     # the name of the keys for each virtual device take the following form
     # EXISTING
-    # "ca_file":"CA File.pem"
     # "key_file":"rsa_private_DEV-0000.pem"
     # "cert_file":"rsa_public_DEV-0000.pem"
     # NEW
-    # "ca_file":"CA File.pem"
     # "key_file":"rsa_private_DEV-0000.pem"
     # "cert_file":"rsa_cert_DEV-0000.pem" 
     configuration_path="$1/cpt/plugins/DataServiceConfig"
     device_name="$2"
-    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"rsa_private[A-Z0-9]*\.pem\"/\"rsa_private$device_name.pem\"/g; s/\"rsa_public[A-Z0-9]*\.pem\"/\"rsa_public$device_name.pem\"/g" 
+    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"cert_file\":\"rsa_public_?([A-Z0-9\-]+)\.pem\"/\"cert_file\":\"rsa_cert_\1\.pem\"/g" 
     # using a temporary file, apply stream editor to the configuration file
     mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json" \
         && sed -E "$sed_substitution_script" "$configuration_path/data_mapping.old.json" \
@@ -64,17 +62,20 @@ update_cloud_settings () {
 update_keys () {
     # parameters: root directory of expanded backup, BOS name of controller and proxy devices
     keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
-    private_key="rsa_private$2.pem"
-    public_key="rsa_public$2.pem"
-    ca_file="CA File.pem"
-    # Update the certificate, private key and CA file
+    device_names="$2"
     # delete old keys
     [[ -d "$keys_path" ]] && rm "$keys_path"/*
-    # copy new ones from the keys source directory
-    cp "$key_source_directory/$private_key" "$keys_path/$private_key" \
-        && cp "$key_source_directory/$public_key" "$keys_path/$public_key" \
-        && cp "$key_source_directory/$ca_file" "$keys_path/$ca_file" \
-        || echo "ERROR: Failed to copy key files." 1>&2
+    # Update the certificate, private key and CA file
+    cp "$key_source_directory/$ca_file" "$keys_path/$ca_file" \
+        || echo "ERROR: Failed to copy CA File.pem" 1>&2
+    for device_name in ${device_names[@]}; do
+        private_key_file="rsa_private_$2.pem"
+        cert_file="rsa_cert_$2.pem"
+        # copy new ones from the keys source directory
+        cp "$key_source_directory/$device_name/rsa_private.pem" "$keys_path/$private_key_file" \
+	    && cp "$key_source_directory/$device_name/rsa_cert.pem" "$keys_path/$cert_file" \
+            || echo "ERROR: Failed to copy key files for $device_name." 1>&2
+    done
 }
 
 update_time_settings () {
@@ -143,8 +144,8 @@ for device_directory in $backup_directory/*; do
 
         # Update settings, keys and time configuration
         # we use the $? status code to short-circuit in case of failure of the update
-        identify_device_name "$output_directory/$device_directory/$expanded_root_dir" \
-            && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" "$device_name" \
+        identify_device_names "$output_directory/$device_directory/$expanded_root_dir" \
+            && update_cloud_settings "$output_directory/$device_directory/$expanded_root_dir" \
             && update_keys "$output_directory/$device_directory/$expanded_root_dir" "$all_device_names" \
             && update_time_settings "$output_directory/$device_directory/$expanded_root_dir" \
             || (echo "ERROR: Failed to update $device_directory." && continue)
