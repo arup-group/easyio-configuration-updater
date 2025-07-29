@@ -28,7 +28,12 @@ done
 backup_directory="$1"
 output_directory="$2"
 key_source_directory="$3"
-ca_file="CA File.pem"
+project_id="bos-platform-prod"
+registry_id="UK-LON-KGX1"
+region_id="us-central1"
+mqtt_host_id="mqtt.bos.goog"
+ca_file_name="CA File.pem"
+
 
 identify_device_names () {
     # parameter, path to expanded archive
@@ -43,15 +48,17 @@ identify_device_names () {
 update_cloud_settings () {
     # parameters: root directory of expanded backup
     # the name of the keys for each virtual device take the following form
-    # EXISTING
     # "key_file":"rsa_private_DEV-0000.pem"
-    # "cert_file":"rsa_public_DEV-0000.pem"
-    # NEW
-    # "key_file":"rsa_private_DEV-0000.pem"
-    # "cert_file":"rsa_cert_DEV-0000.pem" 
+    # "cert_file":"rsa_cert_DEV-0000.pem"
     configuration_path="$1/cpt/plugins/DataServiceConfig"
-    device_name="$2"
-    sed_substitution_script="s/\"essential-keep-197822\"/\"bos-platform-prod\"/g; s/\"mqtt.googleapis.com\"/\"mqtt.bos.goog\"/g; s/\"cert_file\":\"rsa_public_?([A-Z0-9\-]+)\.pem\"/\"cert_file\":\"rsa_cert_\1\.pem\"/g" 
+    project_id_substitution="s/\"project_id\":\"[^\"]+\"/\"project_id\":\"$project_id\"/g"
+    registry_id_substitution="s/\"registry_id\":\"[^\"]+\"/\"registry_id\":\"$registry_id\"/g"
+    region_id_substitution="s/\"region\":\"[^\"]+\"/\"region\":\"$region_id\"/g"
+    mqtt_host_id_substitution="s/\"mqtt_host\":\"[^\"]+\"/\"mqtt_host\":\"$mqtt_host_id\"/g"
+    key_file_substitution="s/\"key_file\":\"[^A-Z0-9]+([A-Z0-9\-]+)\.pem\"/\"key_file\":\"rsa_private_\1\.pem\"/g"
+    cert_file_substitution="s/\"cert_file\":\"[^A-Z0-9]+([A-Z0-9\-]+)\.pem\"/\"cert_file\":\"rsa_cert_\1\.pem\"/g"
+    ca_file_substitution="s/\"ca_file\":\"[^\"]+\"/\"ca_file\":\"$ca_file_name\"/g"
+    sed_substitution_script="$project_id_substitution; $registry_id_substitution; $region_id_substitution; $mqtt_host_id_substitution; $key_file_substitution; $cert_file_substitution; $ca_file_substitution"
     # using a temporary file, apply stream editor to the configuration file
     mv "$configuration_path/data_mapping.json" "$configuration_path/data_mapping.old.json" \
         && sed -E "$sed_substitution_script" "$configuration_path/data_mapping.old.json" \
@@ -62,18 +69,16 @@ update_cloud_settings () {
 update_keys () {
     # parameters: root directory of expanded backup, BOS name of controller and proxy devices
     keys_path="$1/cpt/plugins/DataServiceConfig/uploads/certs"
-    device_names="$2"
+    all_device_names="$2"
     # delete old keys
     [[ -d "$keys_path" ]] && rm "$keys_path"/*
     # Update the certificate, private key and CA file
-    cp "$key_source_directory/$ca_file" "$keys_path/$ca_file" \
-        || echo "ERROR: Failed to copy CA File.pem" 1>&2
-    for device_name in ${device_names[@]}; do
-        private_key_file="rsa_private_$2.pem"
-        cert_file="rsa_cert_$2.pem"
+    cp "$key_source_directory/$ca_file_name" "$keys_path/$ca_file_name" \
+        || echo "ERROR: Failed to copy $ca_file_name" 1>&2
+    for device_name in ${all_device_names[@]}; do
         # copy new ones from the keys source directory
-        cp "$key_source_directory/$device_name/rsa_private.pem" "$keys_path/$private_key_file" \
-	    && cp "$key_source_directory/$device_name/rsa_cert.pem" "$keys_path/$cert_file" \
+        cp "$key_source_directory/$device_name/rsa_private.pem" "$keys_path/rsa_private_$device_name.pem" \
+	    && cp "$key_source_directory/$device_name/rsa_cert.pem" "$keys_path/rsa_cert_$device_name.pem" \
             || echo "ERROR: Failed to copy key files for $device_name." 1>&2
     done
 }
