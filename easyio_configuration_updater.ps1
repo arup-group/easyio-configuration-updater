@@ -1,4 +1,4 @@
-# VERSION: 0.6
+# VERSION: 0.8
 # Key and config rotator for EasyIO devices
 # This script loops over a directory of backup files and puts modified backup files
 # into an output directory.
@@ -12,20 +12,34 @@
 # CRLF to LF when writing files.
 
 param(
-    [string]$BackupProjectDirectory,
-    [string]$OutputProjectDirectory,
-    [string]$KeysDirectory
+    [string]$ParameterFile
 )
 
-# Check that all required parameters are provided
-if (-not $BackupProjectDirectory -or -not $OutputProjectDirectory) {
-    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [backup_project_directory] [output_project_directory] [keys_directory]"
+if (-not $ParameterFile) {
+    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [parameter_file]"
     exit 1
 }
 
-# Check if optional keys directory is provided
-if (-not $KeysDirectory) {
-    Write-Host "Note: keys directory not provided, existing keys in backups will be retained."
+foreach ($line in Get-Content "$ParameterFile") {
+    if ($line -match '=') {
+        Invoke-Expression "$line"
+    }
+}
+
+# Check that all required parameters are provided
+foreach ($parameter_name in "BackupProjectDirectory", "OutputProjectDirectory", "KeysDirectory", `
+             "project_id", "registry_id", "region_id", "mqtt_host_id", "ca_file_name") {
+    $parameter_value = $(Get-Variable -Name $parameter_name -ValueOnly)
+    if (-not $parameter_value -or $parameter_value -eq "") {
+        Write-Host "Parameter is not defined: $parameter_name"
+        if (-not $parameter_name -eq "KeysDirectory") {
+            Write-Host "Quitting."
+            exit 1
+        }
+        else {
+            Write-Host "Note: keys directory not provided, existing keys in backups will be retained."
+        }
+    }
 }
 
 # Check that the provided directories exist on valid paths
@@ -35,6 +49,18 @@ foreach ($dir in $BackupProjectDirectory, $OutputProjectDirectory, $KeysDirector
         exit 1
     }
 }
+
+Write-Host "Using parameters:"
+Write-Host "backup project directory:     $BackupProjectDirectory"
+Write-Host "output project directory:     $OutputProjectDirectory"
+Write-Host "keys directory:               $KeysDirectory"
+Write-Host "project_id:                   $project_id"
+Write-Host "registry_id:                  $registry_id"
+Write-Host "region_id:                    $region_id"
+Write-Host "mqtt_host:                    $mqtt_host_id"
+Write-Host "ca_file:                      $ca_file_name"
+
+exit 1
 
 # Function to identify the device name
 function Identify-DeviceName {
@@ -47,23 +73,73 @@ function Identify-DeviceName {
     return $DeviceName
 }
 
+
+
+
+
+function Update-CloudSettings {
+    param (
+        [string]$rootDir,
+        [string]$project_id,
+        [string]$registry_id,
+        [string]$region_id,
+        [string]$mqtt_host_id,
+        [string]$ca_file_name
+    )
+
+    $configurationPath = Join-Path $rootDir 'cpt/plugins/DataServiceConfig'
+    $jsonFile = Join-Path $configurationPath 'data_mapping.json'
+    $backupFile = Join-Path $configurationPath 'data_mapping.old.json'
+
+    # Read JSON file contents
+    $content = Get-Content $jsonFile -Raw
+
+    # Apply substitutions
+    $content = $content -replace '"project_id":"[^"]+"', "`"project_id`":`"$project_id`""
+    $content = $content -replace '"registry_id":"[^"]+"', "`"registry_id`":`"$registry_id`""
+    $content = $content -replace '"region":"[^"]+"', "`"region`":`"$region_id`""
+    $content = $content -replace '"mqtt_host":"[^"]+"', "`"mqtt_host`":`"$mqtt_host_id`""
+    $content = $content -replace '"key_file":"[^A-Z0-9]+([A-Z0-9\-]+)\.pem"', '"key_file":"rsa_private_$1.pem"'
+    $content = $content -replace '"cert_file":"[^A-Z0-9]+([A-Z0-9\-]+)\.pem"', '"cert_file":"rsa_cert_$1.pem"'
+    $content = $content -replace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
+
+    # Backup original file and write new content
+    Move-Item -Path $jsonFile -Destination $backupFile -Force
+    $content | Set-Content -Path $jsonFile
+    Remove-Item -Path $backupFile -Force
+}
+
+
+
 function Update-CloudSettings {
     param (
         [string]$ExpandedBackupRoot,
         [string]$DeviceName
     )
+    # This function also uses global variables project_id, registry_id, region_id, mqtt_host_id
+    # ca_file_name
 
     $ConfigurationPath = "$ExpandedBackupRoot\cpt\plugins\DataServiceConfig"
     $OldFile = "$ConfigurationPath\data_mapping.json"
     $NewFile = "$ConfigurationPath\data_mapping.updated.json"
 
+    # Read JSON file contents
+    $content = Get-Content $OldFile -Raw
+
+    # Apply substitutions
+    $content = $content -replace '"project_id":"[^"]+"', "`"project_id`":`"$project_id`""
+    $content = $content -replace '"registry_id":"[^"]+"', "`"registry_id`":`"$registry_id`""
+    $content = $content -replace '"region":"[^"]+"', "`"region`":`"$region_id`""
+    $content = $content -replace '"mqtt_host":"[^"]+"', "`"mqtt_host`":`"$mqtt_host_id`""
+    $content = $content -replace '"key_file":"[^A-Z0-9]+([A-Z0-9\-]+)\.pem"', '"key_file":"rsa_private_$1.pem"'
+    $content = $content -replace '"cert_file":"[^A-Z0-9]+([A-Z0-9\-]+)\.pem"', '"cert_file":"rsa_cert_$1.pem"'
+    $content = $content -replace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
+    $content = $content -replace "`r`n", "`n"
+
     # The -Encoding utf8 causes Powershell to use Unix-type line endings and will not have a BOM
-    # from Powershell version 6 onwards. For older Powershell (shipped with Windows 10), use -Encoding ASCII
-    # to prevent the BOM from being inserted
-    (Get-Content $OldFile) -replace '"essential-keep-197822"', '"bos-platform-prod"' `
-        -replace '"mqtt.googleapis.com"', '"mqtt.bos.goog"' `
-        -replace "`r`n", "`n" `
-        | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
+    # from Powershell version 6 onwards. For compatibility with older Powershell (shipped with
+    # Windows 10), we use -Encoding ASCII to prevent the BOM from being inserted
+    $content | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
 
     # In Powershell, we can't rename a file onto a destination that already exists, so use 'Move-Item' instead    
     Move-Item -Path $NewFile -Destination $OldFile -Force
