@@ -50,6 +50,7 @@ function Update-CloudSettings {
     $content = $content -creplace '"key_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
     $content = $content -creplace '"cert_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
     $content = $content -creplace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
+    $content = $content -creplace '"events_interval":[0-9]+', "`"events_interval`":$events_interval"
     $content = $content -creplace "`r`n", "`n"
 
     # The -Encoding utf8 causes Powershell to use Unix-type line endings and will not have a BOM
@@ -144,17 +145,14 @@ function Get-Parameters {
         exit 1
     }
 
-    # execute assignment lines only
-    foreach ($line in Get-Content "$ParameterFile") {
-        if ($line -match '=') {
-            Invoke-Expression "$line"
-        }
-    }
+    # Read parameter file
+    $parameter_file_contents = Get-Content "$ParameterFile"
 
     # Check that all required parameters are provided
     foreach ($parameter_name in "BackupProjectDirectory", "OutputProjectDirectory", "KeysDirectory", `
-                 "project_id", "registry_id", "region_id", "mqtt_host_id", "ca_file_name") {
-	$parameter_value = $(Get-Variable -Name $parameter_name -ValueOnly)
+                 "project_id", "registry_id", "region_id", "mqtt_host_id", "ca_file_name", "events_interval") {
+	$parameter_value = Select-String -InputObject "$parameter_file_contents" -Pattern "$parameter_name\s*=\s*`"([^`"]+)`"" | % {$_.matches.Groups[1].Value}
+
 	# push the setting into global namespace
         Set-Variable -Name global:$parameter_name -Value $parameter_value
         if (-not $parameter_value -or $parameter_value -eq "") {
@@ -178,16 +176,17 @@ function Get-Parameters {
         }
     }
 
-    Write-Host "Using parameters:"
-    Write-Host "backup project directory:     $global:BackupProjectDirectory"
-    Write-Host "output project directory:     $global:OutputProjectDirectory"
-    Write-Host "keys directory:               $global:KeysDirectory"
-    Write-Host "project_id:                   $global:project_id"
-    Write-Host "registry_id:                  $global:registry_id"
-    Write-Host "region_id:                    $global:region_id"
-    Write-Host "mqtt_host:                    $global:mqtt_host_id"
-    Write-Host "ca_file:                      $global:ca_file_name"
-    
+    Write-Host "Directory parameters:"
+    Write-Host "  backup project directory:     $global:BackupProjectDirectory"
+    Write-Host "  output project directory:     $global:OutputProjectDirectory"
+    Write-Host "  keys directory:               $global:KeysDirectory"
+    Write-Host "Substitution parameters:"
+    Write-Host "  project_id:                   $global:project_id"
+    Write-Host "  registry_id:                  $global:registry_id"
+    Write-Host "  region_id:                    $global:region_id"
+    Write-Host "  mqtt_host:                    $global:mqtt_host_id"
+    Write-Host "  ca_file:                      $global:ca_file_name"
+    Write-Host "  events_interval:              $global:events_interval"
 }
 
 
