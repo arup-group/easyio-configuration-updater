@@ -32,8 +32,7 @@ function Update-CloudSettings {
     param (
         [string]$ExpandedBackupRoot
     )
-    # This function also uses global variables project_id, registry_id, region_id, mqtt_host_id
-    # ca_file_name
+    # This function also uses global variables project_id, registry_id, region_id, mqtt_host_id, events_interval
 
     $ConfigurationPath = "$ExpandedBackupRoot\cpt\plugins\DataServiceConfig"
     $OldFile = "$ConfigurationPath\data_mapping.json"
@@ -47,9 +46,6 @@ function Update-CloudSettings {
     $content = $content -creplace '"registry_id":"[^"]+"', "`"registry_id`":`"$registry_id`""
     $content = $content -creplace '"region":"[^"]+"', "`"region`":`"$region_id`""
     $content = $content -creplace '"mqtt_host":"[^"]+"', "`"mqtt_host`":`"$mqtt_host_id`""
-    $content = $content -creplace '"key_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
-    $content = $content -creplace '"cert_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
-    $content = $content -creplace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
     $content = $content -creplace '"events_interval":[0-9]+', "`"events_interval`":$events_interval"
     $content = $content -creplace "`r`n", "`n"
 
@@ -67,17 +63,32 @@ function Update-Keys {
     param (
         [string]$ExpandedBackupRoot,
 	[string]$KeysDirectory,
-	[string]$CAFile,
+	[string]$ca_file_name,
         [string]$AllDeviceNames
     )
 
     $KeysPath = "$ExpandedBackupRoot\cpt\plugins\DataServiceConfig\uploads\certs"
+    $ConfigurationPath = "$ExpandedBackupRoot\cpt\plugins\DataServiceConfig"
+    $OldFile = "$ConfigurationPath\data_mapping.json"
+    $NewFile = "$ConfigurationPath\data_mapping.updated.json"
+
+    # Read JSON file contents
+    $content = Get-Content $OldFile -Raw
+
+    # Apply substitutions
+    $content = $content -creplace '"key_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
+    $content = $content -creplace '"cert_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
+    $content = $content -creplace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
+    $content = $content -creplace "`r`n", "`n"
+
+    $content | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
+    Move-Item -Path $NewFile -Destination $OldFile -Force
 
     # Clear old keys
     Remove-Item "$KeysPath\*" -Force -ErrorAction SilentlyContinue
 
     # Copy new CA file
-    Copy-Item "$KeysDirectory\$CAFile" "$KeysPath\$CAFile"
+    Copy-Item "$KeysDirectory\$ca_file_name" "$KeysPath\$ca_file_name"
 
     ForEach ($DeviceName in $AllDeviceNames.split()) {
         $PrivateKeyFile = "rsa_private_$DeviceName.pem"
@@ -147,17 +158,21 @@ function Get-Parameters {
 
     # Read parameter file
     $parameter_file_contents = Get-Content "$ParameterFile"
+    if (-not $?) {
+	Write-Host "Failed to load $ParameterFile"
+	exit 1
+    }
 
     # Check that all required parameters are provided
     foreach ($parameter_name in "BackupProjectDirectory", "OutputProjectDirectory", "KeysDirectory", `
                  "project_id", "registry_id", "region_id", "mqtt_host_id", "ca_file_name", "events_interval") {
-	$parameter_value = Select-String -InputObject "$parameter_file_contents" -Pattern "$parameter_name\s*=\s*`"([^`"]+)`"" | % {$_.matches.Groups[1].Value}
+	$parameter_value = $parameter_file_contents | Select-String -Pattern "^$parameter_name\s*=\s*`"([^`"]+)`"" | % {$_.matches.Groups[1].Value}
 
 	# push the setting into global namespace
         Set-Variable -Name global:$parameter_name -Value $parameter_value
         if (-not $parameter_value -or $parameter_value -eq "") {
             Write-Host "Parameter is not defined: $parameter_name"
-            if (-not $parameter_name -eq "KeysDirectory") {
+            if (-not ($parameter_name -eq "KeysDirectory")) {
                 Write-Host "Quitting."
                 exit 1
             }
