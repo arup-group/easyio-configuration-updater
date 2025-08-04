@@ -1,0 +1,15 @@
+# Parameters are read by easyio_configuration_updater.ps1 script
+#
+# Directory paths for files
+BackupProjectDirectory = "./data/projects/01_backup_and_download"
+OutputProjectDirectory = "./data/projects/02_upload_and_restore"
+KeysDirectory = "./data/projects/new_keys"
+
+# MQTT configuration settings
+project_id = "project-identifier"
+registry_id = "PROJECT-REGISTRY"
+region_id = "us-central1"
+mqtt_host_id = "mqtt.hostname"
+ca_file_name = "CA File.pem"
+events_interval = "60"
+
