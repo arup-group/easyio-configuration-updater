@@ -94,9 +94,8 @@ function Update-Keys {
         $CertFile = "rsa_cert_$DeviceName.pem"
         # Copy new ones
         Copy-Item "$KeysDirectory\$DeviceName\rsa_private.pem" "$KeysPath\$PrivateKeyFile"
-        Copy-Item "$KeysDirectory\$DeviceName\rsa_cert.em" "$KeysPath\$CertFile"
+        Copy-Item "$KeysDirectory\$DeviceName\rsa_cert.pem" "$KeysPath\$CertFile"
     }
-
 }
 
 function Update-TimeSettings {
