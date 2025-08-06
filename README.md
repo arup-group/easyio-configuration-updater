@@ -70,7 +70,7 @@ mkdir data\projects\new_keys
 copy easyio-configuration-updater\configuration_update_parameters.txt data\projects
 [ edit the configuration parameters in the destination, to suit requirements ]
 .\BatchWorker.exe -project 01_backup_and_download 01_backup_and_download.yml
-easyio-configuration-updater\easyio_configuration_updater.sh data\projects\configuration_update_parameters.txt
+easyio-configuration-updater\easyio_configuration_updater.ps1 data\projects\configuration_update_parameters.txt
 .\BatchWorker.exe -project 02_upload_and_restore 02_upload_and_restore.yml
 ```
 
