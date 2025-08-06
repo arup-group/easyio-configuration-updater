@@ -75,8 +75,8 @@ function Update-Keys {
     $content = Get-Content $OldFile -Raw
 
     # Apply substitutions
-    $content = $content -creplace '"key_file":\s*"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
-    $content = $content -creplace '"cert_file":\s*"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
+    $content = $content -creplace '"key_file":\s*".*?([A-Z]+)-?([0-9]+).*?"', '"key_file":"rsa_private_$1-$2.pem"'
+    $content = $content -creplace '"cert_file":\s*".*?([A-Z]+)-?([0-9]+).*?"', '"cert_file":"rsa_cert_$1-$2.pem"'
     $content = $content -creplace '"ca_file":\s*"[^"]+"', "`"ca_file`":`"$ca_file_name`""
     $content = $content -creplace "`r`n", "`n"
 
@@ -94,7 +94,7 @@ function Update-Keys {
         $CertFile = "rsa_cert_$DeviceName.pem"
         # Copy new ones
         Copy-Item "$KeysDirectory\$DeviceName\rsa_private.pem" "$KeysPath\$PrivateKeyFile"
-        Copy-Item "$KeysDirectory\$DeviceName\rsa_cert.pem" "$KeysPath\$CertFile"
+        Copy-Item "$KeysDirectory\$DeviceName\rsa_cert.em" "$KeysPath\$CertFile"
     }
 
 }
