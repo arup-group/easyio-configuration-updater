@@ -21,7 +21,7 @@ function Identify-DeviceNames {
         [string]$ExpandedArchivePath
     )
     $ParameterFile = "$ExpandedArchivePath\cpt\plugins\DataServiceConfig\data_mapping.json"
-    $AllDeviceNames = Select-String -Path $ParameterFile -Pattern '"device_id":"([^"]+)"' -AllMatches | `
+    $AllDeviceNames = Select-String -Path $ParameterFile -Pattern '"device_id":\s*"([^"]+)"' -AllMatches | `
         % {$_.matches.groups | Where-Object {$_.Name -eq 1}} | % {$_.Value} 
     return $AllDeviceNames
 }
@@ -41,11 +41,11 @@ function Update-CloudSettings {
     $content = Get-Content $OldFile -Raw
 
     # Apply substitutions
-    $content = $content -creplace '"project_id":"[^"]+"', "`"project_id`":`"$project_id`""
-    $content = $content -creplace '"registry_id":"[^"]+"', "`"registry_id`":`"$registry_id`""
-    $content = $content -creplace '"region":"[^"]+"', "`"region`":`"$region_id`""
-    $content = $content -creplace '"mqtt_host":"[^"]+"', "`"mqtt_host`":`"$mqtt_host_id`""
-    $content = $content -creplace '"events_interval":[0-9]+', "`"events_interval`":$events_interval"
+    $content = $content -creplace '"project_id":\s*"[^"]+"', "`"project_id`":`"$project_id`""
+    $content = $content -creplace '"registry_id":\s*"[^"]+"', "`"registry_id`":`"$registry_id`""
+    $content = $content -creplace '"region":\s*"[^"]+"', "`"region`":`"$region_id`""
+    $content = $content -creplace '"mqtt_host":\s*"[^"]+"', "`"mqtt_host`":`"$mqtt_host_id`""
+    $content = $content -creplace '"events_interval":\s*[0-9]+', "`"events_interval`":$events_interval"
     $content = $content -creplace "`r`n", "`n"
 
     # The -Encoding utf8 causes Powershell to use Unix-type line endings and will not have a BOM
@@ -75,9 +75,9 @@ function Update-Keys {
     $content = Get-Content $OldFile -Raw
 
     # Apply substitutions
-    $content = $content -creplace '"key_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
-    $content = $content -creplace '"cert_file":"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
-    $content = $content -creplace '"ca_file":"[^"]+"', "`"ca_file`":`"$ca_file_name`""
+    $content = $content -creplace '"key_file":\s*"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"key_file":"rsa_private_$1-$2.pem"'
+    $content = $content -creplace '"cert_file":\s*"[^A-Z0-9]+([A-Z]+)-?([0-9]+)\.pem"', '"cert_file":"rsa_cert_$1-$2.pem"'
+    $content = $content -creplace '"ca_file":\s*"[^"]+"', "`"ca_file`":`"$ca_file_name`""
     $content = $content -creplace "`r`n", "`n"
 
     $content | Out-File -FilePath $NewFile -Encoding ascii -NoNewLine
