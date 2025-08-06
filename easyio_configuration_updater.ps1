@@ -15,7 +15,6 @@ param(
     [string]$ParameterFile
 )
 
-
 # Function to identify the device names
 function Identify-DeviceNames {
     param (
@@ -152,7 +151,7 @@ function Get-Parameters {
     )
 
     if (-not $ParameterFile) {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) [parameter_file]"
+        Write-Host "Usage: $PSCommandPath [parameter_file]"
         exit 1
     }
 
